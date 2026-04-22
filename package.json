@@ -13,7 +13,7 @@
     "url": "git+https://github.com/sakhalteam/nikkus-pro-water-anglers-classic.git"
   },
   "dependencies": {
-    "phaser": "^3.90.0"
+    "phaser": "^4.0.0"
   },
   "devDependencies": {
     "typescript": "^6.0.2",

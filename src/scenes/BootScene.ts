@@ -1,4 +1,4 @@
-import Phaser from 'phaser'
+import * as Phaser from 'phaser'
 
 /** Direction keys matching the sprite sheet file naming convention */
 const DIRECTIONS = [
