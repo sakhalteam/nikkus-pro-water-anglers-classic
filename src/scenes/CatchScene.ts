@@ -1,66 +1,79 @@
 import * as Phaser from 'phaser'
+import { speciesById } from '../data/species'
+import { DAY_END_MIN } from '../data/tournaments'
+import type { CaughtFish } from '../data/types'
+import { Game, LIVEWELL_LIMIT } from '../state/GameState'
+import { drawPanel, textStyle, TEXT, W, H } from '../ui/theme'
 
+/** Landed-fish card: species, weight, and livewell/cull handling. */
 export class CatchScene extends Phaser.Scene {
   constructor() {
     super({ key: 'CatchScene' })
   }
 
-  create(data: { fish: { key: string; name: string }; weight: number }) {
-    const { fish, weight } = data
+  create(data: { speciesId: string; weight: number }) {
+    const species = speciesById(data.speciesId)
+    const fish: CaughtFish = {
+      speciesId: data.speciesId,
+      weight: Math.round(data.weight * 10) / 10,
+      day: Game.tournament?.day ?? 0,
+      timeMin: Game.timeMin,
+      lakeId: Game.lakeId,
+    }
+    Game.recordCatch(fish)
 
-    // Dim overlay
-    const overlay = this.add.rectangle(400, 300, 800, 600, 0x000000, 0.7)
-    overlay.setScrollFactor(0)
+    this.add.rectangle(W / 2, H / 2, W, H, 0x10142a)
+    drawPanel(this, W / 2 - 170, 70, 340, 300)
 
-    // Banner
-    const banner = this.add.rectangle(400, 200, 350, 180, 0x1a3a5c, 0.95)
-    banner.setStrokeStyle(2, 0x44aaff)
+    const isNewBest = Game.bestFish === fish
+    this.add
+      .text(W / 2, 96, isNewBest ? 'NEW PERSONAL BEST!' : 'NICE CATCH!', textStyle(16, TEXT.accent, { fontStyle: 'bold' }))
+      .setOrigin(0.5)
 
-    // Title
-    this.add.text(400, 135, 'YOU CAUGHT A FISH!', {
-      fontSize: '14px',
-      color: '#ffdd44',
-      fontStyle: 'bold',
-    }).setOrigin(0.5)
+    const img = this.add.image(W / 2, 180, species.textureKey)
+    const scale = Math.min(5, 200 / Math.max(1, img.width))
+    img.setScale(scale)
 
-    // Fish sprite — scale it up since these are tiny pixel art
-    const fishSprite = this.add.image(400, 195, fish.key)
-    fishSprite.setScale(4)
-    // Apply nearest-neighbor filtering for pixel art crispness
-    fishSprite.texture.setFilter(Phaser.Textures.FilterMode.NEAREST)
+    this.add
+      .text(W / 2, 258, species.name.toUpperCase(), textStyle(14, TEXT.main, { fontStyle: 'bold' }))
+      .setOrigin(0.5)
+    this.add
+      .text(W / 2, 282, `${fish.weight.toFixed(1)} LBS`, textStyle(13, TEXT.water, { fontStyle: 'bold' }))
+      .setOrigin(0.5)
 
-    // Fish name
-    this.add.text(400, 230, fish.name, {
-      fontSize: '12px',
-      color: '#ffffff',
-      fontStyle: 'bold',
-    }).setOrigin(0.5)
+    // livewell handling
+    let note = ''
+    if (Game.mode === 'tournament') {
+      if (!species.scoring) {
+        note = "Not a bass - it won't count. Released."
+      } else {
+        const result = Game.addToLivewell(fish)
+        if (!result.kept) {
+          note = `Livewell full of bigger fish - released.`
+        } else if (result.culled) {
+          note = `In the livewell! Culled a ${result.culled.weight.toFixed(1)} lb fish.`
+        } else {
+          note = `In the livewell! (${Game.livewell.length}/${LIVEWELL_LIMIT}, ${Game.livewellWeight().toFixed(1)} lb total)`
+        }
+      }
+    } else {
+      note = 'Logged to your free-fishing records. Released.'
+    }
+    this.add
+      .text(W / 2, 320, note, textStyle(10, TEXT.good, { align: 'center', wordWrap: { width: 300 } }))
+      .setOrigin(0.5)
 
-    // Weight
-    this.add.text(400, 248, `${weight.toFixed(1)} lbs`, {
-      fontSize: '10px',
-      color: '#aaddff',
-    }).setOrigin(0.5)
+    const press = this.add
+      .text(W / 2, H - 54, 'SPACE: keep fishing', textStyle(11, TEXT.main))
+      .setOrigin(0.5)
+    this.tweens.add({ targets: press, alpha: 0.25, duration: 500, yoyo: true, repeat: -1 })
 
-    // Continue prompt
-    const continueText = this.add.text(400, 275, 'Press SPACE to continue', {
-      fontSize: '8px',
-      color: '#888888',
-    }).setOrigin(0.5)
-
-    // Blink the continue text
-    this.tweens.add({
-      targets: continueText,
-      alpha: 0.3,
-      duration: 500,
-      yoyo: true,
-      repeat: -1,
-    })
-
-    // Wait for space
     this.input.keyboard!.once('keydown-SPACE', () => {
-      this.scene.resume('GameScene')
-      this.scene.stop()
+      if (Game.mode === 'tournament' && Game.timeMin >= DAY_END_MIN) {
+        this.scene.start('WeighInScene')
+      } else {
+        this.scene.start('CastScene')
+      }
     })
   }
 }
